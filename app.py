@@ -20,8 +20,8 @@ if not API_KEY or "換成" in API_KEY:
     st.warning("⚠️ 請在 Streamlit Secrets 設定正確的 GEMINI_API_KEY。")
 else:
     genai.configure(api_key=API_KEY)
-    # 【關鍵修正】改用最穩定的標準版模型 'gemini-pro'，解決 404 錯誤
-    ai_model = genai.GenerativeModel('gemini-pro')
+    # 【關鍵】使用 gemini-1.5-flash 配合 requirements.txt 更新，這是最快最穩的選擇
+    ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 2. 萬能讀取器 (自動翻譯標題) ---
 @st.cache_data
@@ -167,6 +167,7 @@ elif st.session_state.step == "result":
         fig.update_polars(radialaxis_range=[0, 5])
         st.plotly_chart(fig)
     
+    # 小老師按鈕
     if st.button("✨ 小老師的解讀"):
         if not API_KEY or "換成" in API_KEY:
              st.error("API Key 未設定正確")
