@@ -20,7 +20,8 @@ if not API_KEY or "換成" in API_KEY:
     st.warning("⚠️ 請在 Streamlit Secrets 設定正確的 GEMINI_API_KEY。")
 else:
     genai.configure(api_key=API_KEY)
-    ai_model = genai.GenerativeModel('gemini-1.5-pro')
+    # 使用 gemini-1.5-flash 確保速度與穩定性
+    ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 2. 萬能讀取器 (自動翻譯標題) ---
 @st.cache_data
@@ -82,7 +83,7 @@ if st.session_state.step == "welcome":
     st.title("✨ Fù Realm 能量診斷")
     st.info("請選擇您的探索模式：")
     
-    # 預先載入測試 (若有錯直接顯示)
+    # 預先載入測試
     df_check = load_data_smart(MBTI_URL, "MBTI")
     if df_check is not None and "Question" not in df_check.columns:
         st.error(f"⚠️ 標題對應失敗。系統讀到的標題: {list(df_check.columns)}")
@@ -102,7 +103,6 @@ elif st.session_state.step == "mbti_input":
 # 頁面 C: MBTI 測驗
 elif st.session_state.step == "mbti_quiz":
     df = load_data_smart(MBTI_URL, "MBTI")
-    # 過濾題目
     qs = df if st.session_state.mbti_mode == "Deep" else df[df['Mode'].astype(str).str.contains("探索", na=False)]
     
     idx = len(st.session_state.mbti_answers)
@@ -117,7 +117,6 @@ elif st.session_state.step == "mbti_quiz":
         if c2.button(str(row['Option_B']), key=f"mb{idx}"):
             st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'B'}); st.rerun()
     else:
-        # 結算
         res_df = pd.DataFrame(st.session_state.mbti_answers)
         if not res_df.empty and 'dim' in res_df.columns:
             final_mbti = ""
@@ -128,7 +127,7 @@ elif st.session_state.step == "mbti_quiz":
                 final_mbti += d[0] if a >= b else d[4]
             st.session_state.mbti_res = final_mbti
         else:
-            st.session_state.mbti_res = "INFJ" # 預設防止報錯
+            st.session_state.mbti_res = "INFJ"
         st.session_state.step = "chakra_pre"; st.rerun()
 
 # 頁面 D: 脈輪前導
@@ -141,8 +140,6 @@ elif st.session_state.step == "chakra_pre":
 # 頁面 E: 脈輪測驗
 elif st.session_state.step == "chakra_quiz":
     df_c = load_data_smart(CHAKRA_URL, "Chakra")
-    
-    # 過濾題目
     qs = df_c[df_c['Mode'].astype(str).str.contains("快速", na=False)] if st.session_state.chakra_mode == "Quick" else df_c
     
     idx = len(st.session_state.chakra_answers)
@@ -155,7 +152,6 @@ elif st.session_state.step == "chakra_quiz":
             st.session_state.chakra_answers[idx] = {'cat': row['Chakra_Category'], 'val': val}
             st.rerun()
     else:
-        # 結算
         res_df = pd.DataFrame(st.session_state.chakra_answers).T
         st.session_state.chakra_res = res_df.groupby('cat')['val'].mean().to_dict()
         st.session_state.step = "result"; st.rerun()
@@ -171,18 +167,20 @@ elif st.session_state.step == "result":
         fig.update_polars(radialaxis_range=[0, 5])
         st.plotly_chart(fig)
     
-    if st.button("✨ 召喚 AI 顧問解讀"):
+    # 這裡就是修改後的按鈕
+    if st.button("✨ 小老師的解讀"):
         if not API_KEY or "換成" in API_KEY:
              st.error("API Key 未設定正確")
         else:
-            with st.spinner("AI 正在連結水晶能量場..."):
-                prompt = f"客戶MBTI: {st.session_state.mbti_res}, 脈輪分數: {st.session_state.chakra_res}。請以 Fù Realm 水晶顧問口吻，給出短評、一句能量金句，並推薦一款水晶。結尾請引導私訊 IG: tinting12o3 截圖領取優惠。"
+            with st.spinner("小老師正在連結水晶能量場..."):
+                # 提示詞 (Prompt) 也可以配合微調，讓語氣更像小老師
+                prompt = f"客戶MBTI: {st.session_state.mbti_res}, 脈輪分數: {st.session_state.chakra_res}。請以親切的「Fù Realm 小老師」口吻，給出溫暖的分析短評、一句能量金句，並推薦一款適合的水晶。結尾請引導私訊 IG: tinting12o3 截圖領取優惠。"
                 try:
                     res = ai_model.generate_content(prompt)
                     st.markdown(res.text)
                     st.link_button("📩 私訊領取專屬水晶", "https://ig.me/m/tinting12o3/")
                 except Exception as e:
-                    st.error(f"AI 連線忙碌中: {e}")
+                    st.error(f"AI 連線忙碌中 (請稍後再試): {e}")
 
     if st.button("🔄 重新測驗"):
         st.session_state.clear(); st.rerun()
