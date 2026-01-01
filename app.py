@@ -5,7 +5,7 @@ import random
 import re
 
 # --- 1. 系統配置 ---
-st.set_page_config(page_title="Fù Realm 能量顧問", page_icon="✨", layout="centered")
+st.set_page_config(page_title="最懂妳的Fùrealm", page_icon="✨", layout="centered")
 
 # MBTI 四大氣質對照表
 MBTI_GROUPS = {
