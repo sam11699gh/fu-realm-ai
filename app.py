@@ -20,10 +20,7 @@ try:
     MBTI_URL = st.secrets["MBTI_CSV_URL"]
     CHAKRA_URL = st.secrets["CHAKRA_CSV_URL"]
     PRODUCT_URL = st.secrets.get("PRODUCT_CSV_URL", "") 
-    
-    # 讀取邏輯表連結 (對應 secrets.toml 中的 LOGIC_CSV_URL)
     LOGIC_URL = st.secrets.get("LOGIC_CSV_URL", "") 
-    
 except:
     st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
     st.stop()
@@ -70,9 +67,10 @@ def load_data_smart(url, type_name):
     except Exception as e:
         return None
 
-# --- 3. CSS 優化 ---
+# --- 3. CSS 優化 (新增 HTML 按鈕樣式) ---
 st.markdown("""
     <style>
+    /* 報告卡片樣式 */
     .report-card { 
         background-color: #ffffff !important; 
         color: #333333 !important;
@@ -84,6 +82,8 @@ st.markdown("""
     }
     .report-card h3 { color: #d4af37 !important; margin-top: 0; }
     .report-card p { color: #555555 !important; line-height: 1.6; }
+    
+    /* 狀態標籤樣式 */
     .status-tag {
         display: inline-block;
         padding: 2px 8px;
@@ -99,10 +99,36 @@ st.markdown("""
         font-weight: bold;
         margin-left: 5px;
     }
+    
+    /* 主背景色 */
     .main { background-color: #fcfaf2; }
+    
+    /* Streamlit 原生按鈕樣式 (重新測驗用) */
     .stButton>button { width: 100%; border-radius: 20px; border: 1px solid #d4af37; background-color: white; color: #d4af37; font-weight: bold; height: 3em; }
     .stButton>button:hover { background-color: #d4af37; color: white; }
     .stProgress > div > div > div > div { background-color: #d4af37; }
+
+    /* 【新增】HTML 連結按鈕樣式 (解決安卓點擊無效) */
+    a.custom-link-btn {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 20px;
+        border: 1px solid #d4af37;
+        background-color: white;
+        color: #d4af37 !important;
+        font-weight: bold;
+        height: 3em;
+        text-decoration: none; /* 去除底線 */
+        margin-top: 10px;
+        transition: all 0.3s;
+    }
+    a.custom-link-btn:hover {
+        background-color: #d4af37;
+        color: white !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -257,12 +283,12 @@ elif st.session_state.step == "result":
     def get_advice_dynamic(chakra, score):
         if df_logic is None or df_logic.empty: return None
         
-        # 篩選脈輪 (模糊比對)
+        # 1. 篩選脈輪 (模糊比對)
         rules = df_logic[df_logic['Chakra_Category'].astype(str).str.contains(chakra[:2], na=False)]
         
         for _, row in rules.iterrows():
             try:
-                # 使用 Regex 抓取字串中的所有數字 (安全解析)
+                # 2. 處理分數區間 (Regex 抓取所有數字)
                 range_str = str(row['Score_Range']).strip()
                 matches = re.findall(r'\d+', range_str)
                 
@@ -316,16 +342,6 @@ elif st.session_state.step == "result":
         p_name = rec_product.get('Product_Name', 'Fù Realm 能量精選')
         if pd.isna(p_name): p_name = rec_product.get('Product_ID', '精選商品')
         
-        st.markdown(f"""
-        <div class="report-card">
-            <h3>👑 {p_name}</h3>
-            <p><strong>🔮 首選晶石：</strong> {rec_product.get('Gemstones', '設計師特調')}</p>
-            <p><strong>💡 能量解碼：</strong> {rec_product.get('Description', '提升頻率，回歸平衡。')}</p>
-            <hr>
-            <p style="font-size:0.9em; color:#888;">專為 <strong>{target_chakra}</strong> 與 <strong>{user_mbti} ({user_group})</strong> 打造。</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
         # 連結處理
         raw_link = rec_product.get('Store_Link', '')
         link_str = str(raw_link).strip()
@@ -337,10 +353,27 @@ elif st.session_state.step == "result":
         else:
             final_link = "https://www.instagram.com/tinting12o3/"
         
-        st.link_button(f"來這瞧瞧 能量精選👀", final_link, type="primary")
+        # --- 顯示結果卡片 (使用 HTML 按鈕替代 st.link_button) ---
+        st.markdown(f"""
+        <div class="report-card">
+            <h3>👑 {p_name}</h3>
+            <p><strong>🔮 首選晶石：</strong> {rec_product.get('Gemstones', '設計師特調')}</p>
+            <p><strong>💡 能量解碼：</strong> {rec_product.get('Description', '提升頻率，回歸平衡。')}</p>
+            <hr>
+            <p style="font-size:0.9em; color:#888;">專為 <strong>{target_chakra}</strong> 與 <strong>{user_mbti} ({user_group})</strong> 打造。</p>
+            <a href="{final_link}" target="_blank" class="custom-link-btn">
+                來這瞧瞧 能量精選👀
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
+        
     else:
         st.warning("目前資料庫中暫無完全匹配的組合，建議直接諮詢能量顧問。")
-        st.link_button("私訊諮詢 💬", "https://ig.me/m/tinting12o3/")
+        st.markdown(f"""
+        <a href="https://ig.me/m/tinting12o3/" target="_blank" class="custom-link-btn">
+            私訊諮詢 💬
+        </a>
+        """, unsafe_allow_html=True)
 
     if st.button("🔄 重新測驗"):
         st.session_state.clear(); st.rerun()
