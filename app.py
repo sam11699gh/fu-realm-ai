@@ -146,4 +146,5 @@ elif st.session_state.step == "result":
 
     if st.button("🔄 重新測驗"):
         st.session_state.step = "welcome"; st.rerun()
-        
+
+
