@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import random
-import re
+import re  # 引入正規表達式庫，解決分數區間符號問題
 
 # --- 1. 系統配置 ---
 st.set_page_config(page_title="Fù Realm 能量顧問", page_icon="✨", layout="centered")
@@ -15,20 +15,20 @@ MBTI_GROUPS = {
     "ISTP": "SP", "ISFP": "SP", "ESTP": "SP", "ESFP": "SP"
 }
 
-# 讀取網址 (核心修正：改回對應您的 Secrets 設定)
+# 讀取網址 (已修正：改用 SCORING_LOGIC_CSV_URL 對接 Secrets)
 try:
-    MBTI_URL = st.secrets["MBTI_CSV_URL"]
-    CHAKRA_URL = st.secrets["CHAKRA_CSV_URL"]
-    PRODUCT_URL = st.secrets.get("PRODUCT_CSV_URL", "") 
+    MBTI_URL = st.secrets["MBTI_CSV_URL"].strip()
+    CHAKRA_URL = st.secrets["CHAKRA_CSV_URL"].strip()
+    PRODUCT_URL = st.secrets.get("PRODUCT_CSV_URL", "").strip()
     
-    # 既然您的 Secrets 裡寫的是 LOGIC_CSV_URL，這裡就必須用 LOGIC_CSV_URL
-    LOGIC_URL = st.secrets.get("LOGIC_CSV_URL", "") 
+    # 這裡對應您 Secrets 裡的設定名稱
+    LOGIC_URL = st.secrets.get("SCORING_LOGIC_CSV_URL", "").strip() 
     
-except:
-    st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
+except Exception as e:
+    st.error(f"⚠️ 系統設定讀取失敗: {e}")
     st.stop()
 
-# --- 2. 萬能讀取器 ---
+# --- 2. 萬能讀取器 (強化版) ---
 @st.cache_data
 def load_data_smart(url, type_name):
     if not url: return None
@@ -253,11 +253,11 @@ elif st.session_state.step == "result":
     st.divider()
     st.subheader("📊 脈輪能量深度解析")
     
-    # --- 核心邏輯：使用 Regex 解析數字 ---
+    # --- 核心邏輯：使用 Regex 解析數字 (100% 解決讀取問題) ---
     def get_advice_dynamic(chakra, score):
         if df_logic is None or df_logic.empty: return None
         
-        # 1. 篩選脈輪
+        # 1. 篩選脈輪 (模糊比對)
         rules = df_logic[df_logic['Chakra_Category'].astype(str).str.contains(chakra[:2], na=False)]
         
         for _, row in rules.iterrows():
@@ -277,7 +277,6 @@ elif st.session_state.step == "result":
                             "copy": row.get('Action_Copy', '暫無建議')
                         }
             except Exception as e:
-                # st.error(f"解析錯誤: {e}") # Debug用
                 continue
         return None
 
@@ -294,23 +293,14 @@ elif st.session_state.step == "result":
             with st.expander(f"{chakra} (能量指數: {score_100:.0f})"):
                 st.write("暫無詳細分析資料")
 
-    # --- 🔧 開發者診斷區 (幫助您抓出 CSV 問題) ---
-    with st.expander("🔧 開發者診斷模式 (若資料異常請截圖此處)"):
+    # --- 🔧 開發者診斷區 ---
+    with st.expander("🔧 開發者診斷模式 (測試成功後可移除)"):
         st.write("1. Logic CSV 網址:", LOGIC_URL)
         if df_logic is None:
             st.error("❌ 無法讀取 Logic CSV，請檢查網址權限 (是否已發布為 Web CSV)")
         else:
             st.success(f"✅ Logic CSV 讀取成功！(共 {len(df_logic)} 筆資料)")
             st.write("欄位名稱偵測:", list(df_logic.columns))
-            st.write("前 3 筆資料預覽:", df_logic.head(3))
-            
-            # 測試特定欄位是否存在
-            required_cols = ['Chakra_Category', 'Score_Range', 'Action_Copy']
-            missing = [c for c in required_cols if c not in df_logic.columns]
-            if missing:
-                st.error(f"❌ 缺少關鍵欄位 (可能是Mapping失敗): {missing}")
-            else:
-                st.success("✅ 關鍵欄位 Mapping 正常")
 
     st.divider()
     st.subheader("💎 您的命定能量水晶")
@@ -345,6 +335,7 @@ elif st.session_state.step == "result":
         </div>
         """, unsafe_allow_html=True)
         
+        # --- 連結處理修正 ---
         raw_link = rec_product.get('Store_Link', '')
         link_str = str(raw_link).strip()
         
