@@ -15,7 +15,7 @@ except:
     st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
     st.stop()
 
-# --- 2. 萬能讀取器 (擴充關鍵字) ---
+# --- 2. 萬能讀取器 (強化對應) ---
 @st.cache_data
 def load_data_smart(url, type_name):
     if not url: return None
@@ -168,31 +168,30 @@ elif st.session_state.step == "result":
         # 2. 七大脈輪詳細說明
         st.subheader("📊 脈輪能量深度解析")
         
-        # 定義分數轉換函數 (將 1-5 分轉換為 CSV 的 Weak/Blocked/Balanced 關鍵字)
-        # 假設對應：1-2.4(Weak), 2.5-3.9(Blocked), 4.0-5.0(Balanced)
+        # 分數轉換: 1-5分 -> 對應 CSV 的 Weak/Blocked/Balanced
         def get_keyword(score):
-            if score < 2.5: return "Weak"      # 對應 CSV 的 '嚴重失衡'
-            elif score < 4.0: return "Blocked" # 對應 CSV 的 '稍微阻塞'
-            else: return "Balanced"            # 對應 CSV 的 '能量平衡'
+            if score < 2.5: return "Weak"      # 對應 CSV 的 '嚴重失衡 (Weak)'
+            elif score < 4.0: return "Blocked" # 對應 CSV 的 '稍微阻塞 (Blocked)'
+            else: return "Balanced"            # 對應 CSV 的 '能量平衡 (Balanced)'
 
+        # 這裡會遍歷所有脈輪，一個一個顯示
         for chakra, score in scores.items():
             keyword = get_keyword(score)
             desc = "暫無說明"
             advice = ""
             
             if df_logic is not None:
-                # 判斷邏輯表是否區分脈輪
+                # 【關鍵修正】檢查表裡有沒有分脈輪
                 has_chakra_col = "Chakra_Category" in df_logic.columns
                 
-                # 篩選邏輯
                 if has_chakra_col:
-                    # 如果表裡有分脈輪，就同時對應「脈輪名稱」與「狀態」
+                    # 如果是詳細版(有分脈輪)，同時對應脈輪名+狀態
                     match = df_logic[
                         (df_logic['Chakra_Category'].str.contains(chakra, case=False, na=False)) &
                         (df_logic['Status'].str.contains(keyword, case=False, na=False))
                     ]
                 else:
-                    # 【關鍵修復】如果表裡沒有分脈輪 (通用表)，只對應「狀態」
+                    # 【這裡是修復點】如果是通用版(沒分脈輪)，只對應狀態
                     match = df_logic[df_logic['Status'].str.contains(keyword, case=False, na=False)]
                 
                 if not match.empty:
@@ -216,12 +215,13 @@ elif st.session_state.step == "result":
         rec_product = None
         
         if df_prod is not None:
-            # 第一層：篩選脈輪
+            # 第一層：篩選最弱脈輪
             chakra_matches = df_prod[df_prod['Chakra_Category'].str.contains(target_chakra, case=False, na=False)]
             
-            # 第二層：篩選 MBTI
+            # 第二層：篩選 MBTI (比對 MBTI_Match 欄位)
             mbti_matches = chakra_matches[chakra_matches['MBTI_Match'].astype(str).str.contains(user_mbti, case=False, na=False)]
             
+            # 優先選 MBTI 匹配的，如果沒有就選同脈輪的
             if not mbti_matches.empty:
                 rec_product = mbti_matches.iloc[0]
             elif not chakra_matches.empty:
@@ -237,12 +237,12 @@ elif st.session_state.step == "result":
             </div>
             """, unsafe_allow_html=True)
             
-            # 導購按鈕
+            # 導購按鈕 (直接讀取 CSV 裡的 Store_Link)
             link = rec_product.get('Store_Link', 'https://www.instagram.com/tinting12o3/')
             if pd.isna(link) or str(link).strip() == "":
                 link = "https://www.instagram.com/tinting12o3/"
                 
-            st.link_button(f"👉 前往 IG 購買 ({rec_product['Product_Name']})", link, type="primary")
+            st.link_button(f"👉 前往購買 ({rec_product['Product_Name']})", link, type="primary")
             
         else:
             st.warning("目前資料庫中暫無完全匹配的組合，建議私訊諮詢師。")
