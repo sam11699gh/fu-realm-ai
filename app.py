@@ -20,8 +20,8 @@ if not API_KEY or "換成" in API_KEY:
     st.warning("⚠️ 請在 Streamlit Secrets 設定正確的 GEMINI_API_KEY。")
 else:
     genai.configure(api_key=API_KEY)
-    # 使用 gemini-1.5-flash 確保速度與穩定性
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
+    # 【關鍵修正】改用最穩定的標準版模型 'gemini-pro'，解決 404 錯誤
+    ai_model = genai.GenerativeModel('gemini-pro')
 
 # --- 2. 萬能讀取器 (自動翻譯標題) ---
 @st.cache_data
@@ -167,13 +167,11 @@ elif st.session_state.step == "result":
         fig.update_polars(radialaxis_range=[0, 5])
         st.plotly_chart(fig)
     
-    # 這裡就是修改後的按鈕
     if st.button("✨ 小老師的解讀"):
         if not API_KEY or "換成" in API_KEY:
              st.error("API Key 未設定正確")
         else:
             with st.spinner("小老師正在連結水晶能量場..."):
-                # 提示詞 (Prompt) 也可以配合微調，讓語氣更像小老師
                 prompt = f"客戶MBTI: {st.session_state.mbti_res}, 脈輪分數: {st.session_state.chakra_res}。請以親切的「Fù Realm 小老師」口吻，給出溫暖的分析短評、一句能量金句，並推薦一款適合的水晶。結尾請引導私訊 IG: tinting12o3 截圖領取優惠。"
                 try:
                     res = ai_model.generate_content(prompt)
