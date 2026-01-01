@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import random
+import re  # <--- 新增：引入正規表達式庫，解決所有符號問題
 
 # --- 1. 系統配置 ---
 st.set_page_config(page_title="Fù Realm 能量顧問", page_icon="✨", layout="centered")
@@ -24,7 +25,7 @@ except:
     st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
     st.stop()
 
-# --- 2. 萬能讀取器 (針對您的 CSV 格式強化版) ---
+# --- 2. 萬能讀取器 ---
 @st.cache_data
 def load_data_smart(url, type_name):
     if not url: return None
@@ -32,10 +33,8 @@ def load_data_smart(url, type_name):
         try: df = pd.read_csv(url, encoding='utf-8')
         except: df = pd.read_csv(url, encoding='utf-8-sig') 
         
-        # 標準化欄位名稱：去除空格、轉小寫
         df.columns = df.columns.str.strip()
         
-        # 欄位對照表 (Mapping)
         rename_map = {}
         for col in df.columns:
             c = col.lower().replace("_", "").replace(" ", "").replace("(", "").replace(")", "")
@@ -48,18 +47,14 @@ def load_data_smart(url, type_name):
             elif "optionb" in c or "選項b" in c: rename_map[col] = "Option_B"
             elif any(x in c for x in ["分類", "脈輪", "category", "chakra", "focus"]): rename_map[col] = "Chakra_Category"
             
-            # --- Logic 表專用 (針對圖19強化) ---
-            # 必須精準匹配 "分數區間 (Score Range)"
+            # --- Logic 表專用 ---
             elif "range" in c or "區間" in c: rename_map[col] = "Score_Range"
-            # 必須精準匹配 "狀態標籤 (Status Label)"
             elif "status" in c or "狀態" in c or "label" in c: rename_map[col] = "Status"
-            # 必須精準匹配 "行銷觸發詞 (Trigger)"
             elif "trigger" in c or "觸發" in c: rename_map[col] = "Trigger"
-            # 必須精準匹配 "行動建議文案 (Action Copy)"
             elif "copy" in c or "文案" in c or "action" in c: rename_map[col] = "Action_Copy"
             elif "mapping" in c or "索引" in c or "logic" in c: rename_map[col] = "Product_Mapping"
             
-            # --- Product 表專用 (針對圖20強化) ---
+            # --- Product 表專用 ---
             elif "product" in c or "商品" in c or "id" in c: rename_map[col] = "Product_ID"
             elif "name" in c or "名稱" in c: rename_map[col] = "Product_Name"
             elif "gem" in c or "晶石" in c or "stone" in c: rename_map[col] = "Gemstones"
@@ -240,7 +235,7 @@ elif st.session_state.step == "result":
     st.title("🔮 全方位能量診斷報告")
     st.markdown(f"**MBTI 類型：{user_mbti} ({user_group}型氣質)**")
     
-    # 排序與分數換算
+    # 分數換算
     ordered_chakras = ["海底輪", "臍輪", "太陽輪", "心輪", "喉輪", "眉心輪", "頂輪"]
     final_scores = {k: scores.get(k, 0) for k in ordered_chakras}
     converted_scores = {k: (v - 1) * 25 for k, v in final_scores.items()} 
@@ -255,19 +250,26 @@ elif st.session_state.step == "result":
     st.divider()
     st.subheader("📊 脈輪能量深度解析")
     
-    # 動態邏輯判讀函數
+    # --- 核心修復：使用 Regex 解析數字，無視所有符號問題 ---
     def get_advice_dynamic(chakra, score):
         if df_logic is None or df_logic.empty: return None
         
-        # 篩選該脈輪的規則 (比對欄位：Chakra_Category)
+        # 1. 篩選脈輪 (模糊比對)
+        # 這裡會找出所有包含前兩個字(如"海底")的規則列
         rules = df_logic[df_logic['Chakra_Category'].astype(str).str.contains(chakra[:2], na=False)]
         
         for _, row in rules.iterrows():
             try:
-                # 解析分數區間 (如 "0 - 35")
+                # 2. 處理分數區間 (核彈級解法：直接抓出所有數字)
                 range_str = str(row['Score_Range']).strip()
-                if '-' in range_str:
-                    min_v, max_v = map(int, range_str.split('-'))
+                # findall 會找出字串中所有的連續數字，回傳列表 ['0', '35']
+                matches = re.findall(r'\d+', range_str)
+                
+                if len(matches) >= 2:
+                    min_v = int(matches[0])
+                    max_v = int(matches[1])
+                    
+                    # 進行比對
                     if min_v <= score <= max_v:
                         return {
                             "status": row.get('Status', 'Status'),
@@ -288,7 +290,6 @@ elif st.session_state.step == "result":
                 st.markdown(f"<span class='status-tag'>{advice_data['status']}</span> <span class='trigger-word'>{advice_data['trigger']}</span>", unsafe_allow_html=True)
                 st.write(advice_data['copy'])
         else:
-            # 若無匹配資料
             with st.expander(f"{chakra} (能量指數: {score_100:.0f})"):
                 st.write("暫無詳細分析資料 (請檢查 Logic 表格分數區間)")
 
@@ -325,15 +326,18 @@ elif st.session_state.step == "result":
         </div>
         """, unsafe_allow_html=True)
         
-        # 連結處理：若 CSV 內不是網址，預設回主頁
+        # --- 連結處理修正 ---
         raw_link = rec_product.get('Store_Link', '')
-        if pd.isna(raw_link) or "http" not in str(raw_link):
-            link = "https://www.instagram.com/tinting12o3/"
-        else:
-            link = str(raw_link).strip()
+        link_str = str(raw_link).strip()
         
-        # 按鈕文字修正
-        st.link_button(f"來這瞧瞧 能量精選👀", link, type="primary")
+        if "http" in link_str:
+            final_link = link_str
+        elif "instagram.com" in link_str:
+            final_link = "https://" + link_str
+        else:
+            final_link = "https://www.instagram.com/tinting12o3/"
+        
+        st.link_button(f"來這瞧瞧 能量精選👀", final_link, type="primary")
     else:
         st.warning("目前資料庫中暫無完全匹配的組合，建議直接諮詢能量顧問。")
         st.link_button("私訊諮詢 💬", "https://ig.me/m/tinting12o3/")
