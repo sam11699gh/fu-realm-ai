@@ -15,19 +15,19 @@ except:
     st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
     st.stop()
 
-# 檢查 API Key
+# 檢查 API Key 並配置 AI
 if not API_KEY or "換成" in API_KEY:
     st.warning("⚠️ 請在 Streamlit Secrets 設定正確的 GEMINI_API_KEY。")
 else:
     genai.configure(api_key=API_KEY)
-    # 【關鍵】使用 gemini-1.5-flash 配合 requirements.txt 更新，這是最快最穩的選擇
+    # 使用 gemini-1.5-flash (需配合 requirements.txt 更新生效)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 2. 萬能讀取器 (自動翻譯標題) ---
 @st.cache_data
 def load_data_smart(url, type_name):
     try:
-        # 嘗試讀取 CSV (處理編碼)
+        # 嘗試多種編碼讀取
         try:
             df = pd.read_csv(url, encoding='utf-8')
         except:
