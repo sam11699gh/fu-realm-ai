@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import google.generativeai as genai
 
-# --- 1. 系統配置與 Secrets 讀取 ---
+# --- 1. 系統配置 ---
 st.set_page_config(page_title="Fù Realm 能量顧問", page_icon="✨", layout="centered")
 
 # 嘗試從後台 Secrets 獲取金鑰與連結
@@ -11,6 +11,8 @@ try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     MBTI_Q_URL = st.secrets["MBTI_CSV_URL"]
     CHAKRA_Q_URL = st.secrets["CHAKRA_CSV_URL"]
+    # 預留產品庫連結，若未來要串接可使用
+    # PRODUCT_URL = st.secrets["PRODUCT_CSV_URL"] 
 except Exception as e:
     st.error("⚠️ 系統連線錯誤：請檢查 Streamlit Secrets 設定是否完整。")
     st.stop()
@@ -37,7 +39,7 @@ if "step" not in st.session_state:
     st.session_state.mbti_res = ""
     st.session_state.chakra_res = {}
 
-# --- 4. 側邊欄 (乾淨版：只留品牌與重置) ---
+# --- 4. 側邊欄 ---
 with st.sidebar:
     st.title("✨ Fù Realm")
     st.write("您的專屬能量顧問")
@@ -47,24 +49,49 @@ with st.sidebar:
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
-# --- 5. 核心邏輯函數 ---
+# --- 5. 核心邏輯函數 (含欄位自動修正) ---
 @st.cache_data
-def load_csv(url):
-    try: return pd.read_csv(url)
-    except: return None
+def load_and_clean_csv(url):
+    try:
+        df = pd.read_csv(url)
+        # 1. 清除欄位名稱前後的空白
+        df.columns = df.columns.str.strip()
+        
+        # 2. 定義欄位對應字典 (中文/英文變體 -> 程式標準英文)
+        column_mapping = {
+            # MBTI 相關
+            "題目": "Question", "問題": "Question", "Questions": "Question",
+            "選項A": "Option_A", "Option A": "Option_A", "OptionA": "Option_A",
+            "選項B": "Option_B", "Option B": "Option_B", "OptionB": "Option_B",
+            "維度": "Dimension", "Dimensions": "Dimension", "Dim": "Dimension",
+            "模式": "Mode", "Type": "Mode",
+            # 脈輪 相關
+            "脈輪": "Chakra_Category", "脈輪分類": "Chakra_Category", "分類": "Chakra_Category", "Category": "Chakra_Category"
+        }
+        
+        # 3. 執行更名
+        df.rename(columns=column_mapping, inplace=True)
+        return df
+    except Exception as e:
+        st.error(f"讀取數據失敗: {e}")
+        return None
 
 def calc_mbti(ans_list):
     # 簡單的 MBTI 計算邏輯
     df = pd.DataFrame(ans_list)
     res = ""
     for d in ['E / I', 'S / N', 'T / F', 'J / P']:
-        sub = df[df['dim'] == d]
-        if not sub.empty:
-            a_count = (sub['score'] == 'A').sum()
-            b_count = (sub['score'] == 'B').sum()
-            res += d[0] if a_count >= b_count else d[4]
+        # 確保維度資料存在，避免報錯
+        if 'dim' in df.columns:
+            sub = df[df['dim'] == d]
+            if not sub.empty:
+                a_count = (sub['score'] == 'A').sum()
+                b_count = (sub['score'] == 'B').sum()
+                res += d[0] if a_count >= b_count else d[4]
+            else:
+                res += "-" 
         else:
-            res += "-" # 避免無資料時報錯
+            return "Error"
     return res
 
 # --- 6. 測驗流程控制 ---
@@ -91,23 +118,29 @@ elif st.session_state.step == "mbti_input":
 
 # C. MBTI 測驗 (探索/深層)
 elif st.session_state.step == "mbti_quiz":
-    df_m = load_csv(MBTI_Q_URL)
+    df_m = load_and_clean_csv(MBTI_Q_URL)
+    
     if df_m is not None:
-        qs = df_m if st.session_state.mbti_mode == "Deep" else df_m[df_m['Mode'].str.contains("探索")]
-        idx = len(st.session_state.mbti_answers)
-        
-        if idx < len(qs):
-            row = qs.iloc[idx]
-            st.subheader(f"MBTI 分析中 ({idx+1}/{len(qs)})")
-            st.progress((idx+1)/len(qs))
-            st.markdown(f"**{row['Question']}**")
-            if st.button(row['Option_A'], key=f"ma{idx}"):
-                st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'A'}); st.rerun()
-            if st.button(row['Option_B'], key=f"mb{idx}"):
-                st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'B'}); st.rerun()
+        # 檢查必要欄位是否存在
+        required_cols = ['Mode', 'Question', 'Option_A', 'Option_B', 'Dimension']
+        if not all(col in df_m.columns for col in required_cols):
+            st.error(f"MBTI 題庫欄位對應錯誤。目前欄位: {list(df_m.columns)}，需要: {required_cols}")
         else:
-            st.session_state.mbti_res = calc_mbti(st.session_state.mbti_answers)
-            st.session_state.step = "chakra_pre"; st.rerun()
+            qs = df_m if st.session_state.mbti_mode == "Deep" else df_m[df_m['Mode'].astype(str).str.contains("探索", na=False)]
+            idx = len(st.session_state.mbti_answers)
+            
+            if idx < len(qs):
+                row = qs.iloc[idx]
+                st.subheader(f"MBTI 分析中 ({idx+1}/{len(qs)})")
+                st.progress((idx+1)/len(qs))
+                st.markdown(f"**{row['Question']}**")
+                if st.button(str(row['Option_A']), key=f"ma{idx}"):
+                    st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'A'}); st.rerun()
+                if st.button(str(row['Option_B']), key=f"mb{idx}"):
+                    st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'B'}); st.rerun()
+            else:
+                st.session_state.mbti_res = calc_mbti(st.session_state.mbti_answers)
+                st.session_state.step = "chakra_pre"; st.rerun()
 
 # D. 脈輪模式選擇
 elif st.session_state.step == "chakra_pre":
@@ -121,24 +154,30 @@ elif st.session_state.step == "chakra_pre":
 
 # E. 脈輪測驗執行
 elif st.session_state.step == "chakra_quiz":
-    df_c = load_csv(CHAKRA_Q_URL)
+    df_c = load_and_clean_csv(CHAKRA_Q_URL)
+    
     if df_c is not None:
-        qs = df_c[df_c['Mode'].str.contains("快速")] if st.session_state.chakra_mode == "Quick" else df_c
-        idx = len(st.session_state.chakra_answers)
-        
-        if idx < len(qs):
-            row = qs.iloc[idx]
-            st.subheader(f"脈輪能量掃描 ({idx+1}/{len(qs)})")
-            st.progress((idx+1)/len(qs))
-            st.markdown(f"**{row['Question']}**")
-            val = st.select_slider("符合程度", options=[1,2,3,4,5], value=3, key=f"cs{idx}")
-            if st.button("下一題", key=f"cb{idx}"):
-                st.session_state.chakra_answers[idx] = {'cat': row['Chakra_Category'], 'val': val}; st.rerun()
+        # 檢查必要欄位
+        required_cols = ['Mode', 'Question', 'Chakra_Category']
+        if not all(col in df_c.columns for col in required_cols):
+            st.error(f"脈輪題庫欄位對應錯誤。目前欄位: {list(df_c.columns)}，需要: {required_cols}")
         else:
-            # 結算脈輪分數
-            final_df = pd.DataFrame(st.session_state.chakra_answers).T
-            st.session_state.chakra_res = final_df.groupby('cat')['val'].mean().to_dict()
-            st.session_state.step = "result"; st.rerun()
+            qs = df_c[df_c['Mode'].astype(str).str.contains("快速", na=False)] if st.session_state.chakra_mode == "Quick" else df_c
+            idx = len(st.session_state.chakra_answers)
+            
+            if idx < len(qs):
+                row = qs.iloc[idx]
+                st.subheader(f"脈輪能量掃描 ({idx+1}/{len(qs)})")
+                st.progress((idx+1)/len(qs))
+                st.markdown(f"**{row['Question']}**")
+                val = st.select_slider("符合程度 (1不符合 -> 5非常符合)", options=[1,2,3,4,5], value=3, key=f"cs{idx}")
+                if st.button("下一題", key=f"cb{idx}"):
+                    st.session_state.chakra_answers[idx] = {'cat': row['Chakra_Category'], 'val': val}; st.rerun()
+            else:
+                # 結算脈輪分數
+                final_df = pd.DataFrame(st.session_state.chakra_answers).T
+                st.session_state.chakra_res = final_df.groupby('cat')['val'].mean().to_dict()
+                st.session_state.step = "result"; st.rerun()
 
 # F. 最終報告與 AI 生成
 elif st.session_state.step == "result":
@@ -164,7 +203,7 @@ elif st.session_state.step == "result":
             任務：
             1. 分析該 MBTI 與當前脈輪強弱點的關聯。
             2. 給予一句溫暖的能量肯定語。
-            3. 推薦 1-2 種適合的水晶（請參考一般水晶學知識）。
+            3. 推薦 1-2 種適合的水晶（請參考一般水晶學知識，例如海底輪對應紅碧玉/黑曜石，心輪對應粉晶/捷克隕石）。
             4. 最後必須加上這句話引導私訊：
                '👉 想要這款專屬水晶嗎？請截圖此畫面，點擊下方按鈕私訊我們，輸入【我要領取能量處方】，即可獲得專屬優惠！'
             """
