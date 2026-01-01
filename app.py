@@ -6,6 +6,14 @@ import random
 # --- 1. 系統配置 ---
 st.set_page_config(page_title="Fù Realm 能量顧問", page_icon="✨", layout="centered")
 
+# MBTI 四大氣質對照表 (核心修正：讓程式讀懂產品表的分類)
+MBTI_GROUPS = {
+    "INTJ": "NT", "INTP": "NT", "ENTJ": "NT", "ENTP": "NT",
+    "INFJ": "NF", "INFP": "NF", "ENFJ": "NF", "ENFP": "NF",
+    "ISTJ": "SJ", "ISFJ": "SJ", "ESTJ": "SJ", "ESFJ": "SJ",
+    "ISTP": "SP", "ISFP": "SP", "ESTP": "SP", "ESFP": "SP"
+}
+
 # 讀取網址
 try:
     MBTI_URL = st.secrets["MBTI_CSV_URL"]
@@ -16,7 +24,7 @@ except:
     st.error("⚠️ 系統設定讀取失敗，請檢查 Streamlit Secrets。")
     st.stop()
 
-# --- 2. 萬能讀取器 ---
+# --- 2. 萬能讀取器 (升級版) ---
 @st.cache_data
 def load_data_smart(url, type_name):
     if not url: return None
@@ -24,27 +32,41 @@ def load_data_smart(url, type_name):
         try: df = pd.read_csv(url, encoding='utf-8')
         except: df = pd.read_csv(url, encoding='utf-8-sig') 
         
+        # 標準化欄位名稱：去除空格、轉小寫
         df.columns = df.columns.str.strip()
+        
+        # 欄位對照表 (Mapping) - 針對新版 CSV 結構進行優化
         rename_map = {}
         for col in df.columns:
-            c = col.lower().replace("_", "").replace(" ", "")
+            c = col.lower().replace("_", "").replace(" ", "").replace("(", "").replace(")", "")
+            
+            # 通用欄位
             if any(x in c for x in ["題目", "問題", "question", "content"]): rename_map[col] = "Question"
             elif any(x in c for x in ["模式", "type", "mode"]): rename_map[col] = "Mode"
             elif any(x in c for x in ["維度", "dim"]): rename_map[col] = "Dimension"
             elif "optiona" in c or "選項a" in c: rename_map[col] = "Option_A"
             elif "optionb" in c or "選項b" in c: rename_map[col] = "Option_B"
             elif any(x in c for x in ["分類", "脈輪", "category", "chakra", "focus"]): rename_map[col] = "Chakra_Category"
-            elif "product" in c or "商品" in c: rename_map[col] = "Product_Name"
-            elif "gem" in c or "晶石" in c or "stone" in c: rename_map[col] = "Preferred_Gemstones"
+            
+            # Logic 表專用
+            elif "range" in c or "區間" in c: rename_map[col] = "Score_Range"
+            elif "status" in c or "狀態" in c: rename_map[col] = "Status"
+            elif "trigger" in c or "觸發" in c: rename_map[col] = "Trigger"
+            elif "copy" in c or "文案" in c or "action" in c: rename_map[col] = "Action_Copy"
+            elif "mapping" in c or "索引" in c or "logic" in c: rename_map[col] = "Product_Mapping"
+            
+            # Product 表專用
+            elif "product" in c or "商品" in c or "id" in c: rename_map[col] = "Product_ID" # 修正：抓 Product_ID
+            elif "name" in c or "名稱" in c: rename_map[col] = "Product_Name" # 若有產品名
+            elif "gem" in c or "晶石" in c or "stone" in c: rename_map[col] = "Gemstones"
             elif "link" in c or "連結" in c or "url" in c: rename_map[col] = "Store_Link"
-            elif "mbti" in c and "match" in c: rename_map[col] = "MBTI_Match"
-            elif "status" in c or "狀態" in c or "range" in c or "score" in c: rename_map[col] = "Status"
-            elif "desc" in c or "說明" in c or "定義" in c: rename_map[col] = "Description"
-            elif "advice" in c or "建議" in c: rename_map[col] = "Advice"
+            elif "match" in c or "mbti" in c: rename_map[col] = "MBTI_Match"
+            elif "desc" in c or "說明" in c or "描述" in c: rename_map[col] = "Description"
 
         df.rename(columns=rename_map, inplace=True)
         return df
     except Exception as e:
+        # st.error(f"讀取 {type_name} 失敗: {e}") # Debug 用，上線可註解
         return None
 
 # --- 3. CSS 優化 ---
@@ -59,8 +81,21 @@ st.markdown("""
         margin-bottom: 20px; 
         box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
     }
-    .report-card h3 { color: #d4af37 !important; }
-    .report-card p { color: #555555 !important; }
+    .report-card h3 { color: #d4af37 !important; margin-top: 0; }
+    .report-card p { color: #555555 !important; line-height: 1.6; }
+    .status-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background-color: #f0f0f0;
+        color: #555;
+        font-size: 0.85em;
+        margin-bottom: 5px;
+    }
+    .trigger-word {
+        color: #d9534f;
+        font-weight: bold;
+    }
     .main { background-color: #fcfaf2; }
     .stButton>button { width: 100%; border-radius: 20px; border: 1px solid #d4af37; background-color: white; color: #d4af37; font-weight: bold; height: 3em; }
     .stButton>button:hover { background-color: #d4af37; color: white; }
@@ -188,87 +223,122 @@ elif st.session_state.step == "chakra_quiz":
         st.session_state.chakra_res = res_df.groupby('cat')['val'].mean().to_dict()
         st.session_state.step = "result"; st.rerun()
 
-# 頁面 F: 結果報告
+# 頁面 F: 結果報告 (核心邏輯大更新)
 elif st.session_state.step == "result":
     df_logic = load_data_smart(LOGIC_URL, "Logic")
     df_prod = load_data_smart(PRODUCT_URL, "Product")
     
     scores = st.session_state.chakra_res
     user_mbti = st.session_state.mbti_res
+    user_group = MBTI_GROUPS.get(user_mbti.upper(), "") # 轉換 MBTI (如 INFJ -> NF)
     
     st.title("🔮 全方位能量診斷報告")
-    st.markdown(f"**MBTI 類型：{user_mbti}**")
+    st.markdown(f"**MBTI 類型：{user_mbti} ({user_group}型氣質)**")
     
     # 排序與分數換算
     ordered_chakras = ["海底輪", "臍輪", "太陽輪", "心輪", "喉輪", "眉心輪", "頂輪"]
     final_scores = {k: scores.get(k, 0) for k in ordered_chakras}
-    converted_scores = {k: (v - 1) * 25 for k, v in final_scores.items()}
+    converted_scores = {k: (v - 1) * 25 for k, v in final_scores.items()} # 1-5分 轉 0-100分
     
-    # 【優化 1】雷達圖顯示數字 (text=r)
+    # 雷達圖
     df_plot = pd.DataFrame(dict(r=list(converted_scores.values()), theta=list(converted_scores.keys())))
     fig = px.line_polar(df_plot, r='r', theta='theta', line_close=True, text='r', color_discrete_sequence=['#d4af37'])
-    fig.update_polars(radialaxis=dict(range=[0, 100], showticklabels=False)) # 隱藏軸線標籤，只看數據點
-    fig.update_traces(textposition='top center') # 數字顯示在點上方
+    fig.update_polars(radialaxis=dict(range=[0, 100], showticklabels=False))
+    fig.update_traces(textposition='top center')
     st.plotly_chart(fig)
     
     st.divider()
     st.subheader("📊 脈輪能量深度解析")
     
-    # 邏輯判定函數
-    def get_status_from_logic(score_100):
-        if score_100 <= 35: return "Weak"
-        elif score_100 <= 60: return "Blocked"
-        elif score_100 <= 85: return "Balanced"
-        else: return "Excellent"
-    
+    # 動態邏輯判讀函數
+    def get_advice_dynamic(chakra, score):
+        if df_logic is None or df_logic.empty: return None
+        
+        # 篩選該脈輪的所有規則
+        # 使用模糊比對，避免 "海底輪" vs "海底輪 (Root)" 的問題
+        rules = df_logic[df_logic['Chakra_Category'].astype(str).str.contains(chakra[:2], na=False)]
+        
+        for _, row in rules.iterrows():
+            try:
+                # 解析分數區間 "0 - 35"
+                range_str = str(row['Score_Range'])
+                min_v, max_v = map(int, range_str.split('-'))
+                
+                if min_v <= score <= max_v:
+                    return {
+                        "status": row.get('Status', 'Status'),
+                        "trigger": row.get('Trigger', ''),
+                        "copy": row.get('Action_Copy', '暫無建議'),
+                        "tag": row.get('Product_Mapping', '') # 預留給未來擴充
+                    }
+            except:
+                continue
+        return None
+
+    # 顯示所有脈輪的文案
     for chakra in ordered_chakras:
         score_100 = converted_scores[chakra]
-        status_key = get_status_from_logic(score_100)
-        desc = "暫無說明"; advice = ""
+        advice_data = get_advice_dynamic(chakra, score_100)
         
-        # 【優化 2】修復 KeyError：只依賴 Status 欄位進行比對 (通用邏輯表)
-        if df_logic is not None:
-            # 確保欄位存在
-            if "Status" in df_logic.columns:
-                match = df_logic[df_logic['Status'].astype(str).str.contains(status_key, case=False, na=False)]
-                if not match.empty:
-                    desc = match.iloc[0].get('Description', desc)
-                    advice = match.iloc[0].get('Advice', '')
-
-        with st.expander(f"{chakra} (能量指數: {score_100:.0f})"):
-            st.markdown(f"**狀態：** {status_key} ({desc})")
-            if advice: st.markdown(f"**建議：** {advice}")
+        if advice_data:
+            with st.expander(f"{chakra} (能量指數: {score_100:.0f})"):
+                st.markdown(f"<span class='status-tag'>{advice_data['status']}</span> <span class='trigger-word'>{advice_data['trigger']}</span>", unsafe_allow_html=True)
+                st.write(advice_data['copy'])
+        else:
+            # 容錯顯示
+            with st.expander(f"{chakra} (能量指數: {score_100:.0f})"):
+                st.write("數據分析中...")
 
     st.divider()
     st.subheader("💎 您的命定能量水晶")
     
+    # 找出最低分脈輪 (或依據策略調整為最需要平衡的脈輪)
     target_chakra = min(converted_scores, key=converted_scores.get)
-    st.info(f"偵測到您的 **{target_chakra}** 最需要支持，專屬推薦：")
+    target_score = converted_scores[target_chakra]
+    
+    # 根據分數判斷是「急救」還是「升級」狀態
+    # 這裡我們主要用「脈輪+MBTI」來找產品，因為產品表是這樣設計的
+    st.info(f"偵測到您的 **{target_chakra}** 需要支持，專屬推薦：")
     
     rec_product = None
     if df_prod is not None:
-        c_match = df_prod[df_prod['Chakra_Category'].str.contains(target_chakra, case=False, na=False)]
-        m_match = c_match[c_match['MBTI_Match'].astype(str).str.contains(user_mbti, case=False, na=False)]
+        # 1. 篩選脈輪
+        c_match = df_prod[df_prod['Chakra_Category'].astype(str).str.contains(target_chakra[:2], case=False, na=False)]
         
-        if not m_match.empty: rec_product = m_match.iloc[0]
-        elif not c_match.empty: rec_product = c_match.iloc[0]
+        # 2. 篩選 MBTI (核心修正：支援模糊比對與氣質比對)
+        # 邏輯：產品的 MBTI_Match 欄位若包含使用者的 "MBTI" 或 "氣質(NT/NF..)" 或 "All"
+        if not c_match.empty:
+            for _, row in c_match.iterrows():
+                p_targets = str(row['MBTI_Match']).upper()
+                if (user_mbti in p_targets) or (user_group in p_targets) or ("ALL" in p_targets) or ("全部" in p_targets):
+                    rec_product = row
+                    break
+            
+            # 若找不到精準匹配，退而求其次找該脈輪的第一個產品 (避免空白)
+            if rec_product is None and not c_match.empty:
+                rec_product = c_match.iloc[0]
     
     if rec_product is not None:
+        p_name = rec_product.get('Product_Name', 'Fù Realm 能量精選')
+        if pd.isna(p_name): p_name = rec_product.get('Product_ID', '精選商品')
+        
         st.markdown(f"""
         <div class="report-card">
-            <h3>👑 {rec_product['Product_Name']}</h3>
-            <p><strong>🔮 首選晶石：</strong> {rec_product.get('Preferred_Gemstones', '依設計師搭配')}</p>
-            <p>專為 <strong>{target_chakra}</strong> 與 <strong>{user_mbti}</strong> 打造。</p>
+            <h3>👑 {p_name}</h3>
+            <p><strong>🔮 首選晶石：</strong> {rec_product.get('Gemstones', '設計師特調')}</p>
+            <p><strong>💡 能量解碼：</strong> {rec_product.get('Description', '提升頻率，回歸平衡。')}</p>
+            <hr>
+            <p style="font-size:0.9em; color:#888;">專為 <strong>{target_chakra}</strong> 與 <strong>{user_mbti} ({user_group})</strong> 能量場域打造。</p>
         </div>
         """, unsafe_allow_html=True)
         
         link = rec_product.get('Store_Link', 'https://www.instagram.com/tinting12o3/')
         if pd.isna(link) or str(link).strip() == "": link = "https://www.instagram.com/tinting12o3/"
         
-        st.link_button(f"來這瞧瞧 👀 ({rec_product['Product_Name']})", link, type="primary")
+        st.link_button(f"前往選購 🎁 ({p_name})", link, type="primary")
     else:
-        st.warning("暫無匹配產品")
-        st.link_button("來這瞧瞧 👀 (私訊諮詢)", "https://ig.me/m/tinting12o3/")
+        st.warning("目前資料庫中暫無完全匹配的組合，建議直接諮詢能量顧問。")
+        st.link_button("私訊諮詢 💬", "https://ig.me/m/tinting12o3/")
 
     if st.button("🔄 重新測驗"):
         st.session_state.clear(); st.rerun()
