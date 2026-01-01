@@ -12,40 +12,66 @@ st.markdown("""
     .main { background-color: #fcfaf2; }
     .stButton>button { width: 100%; border-radius: 20px; border: 1px solid #d4af37; background-color: white; color: #d4af37; font-weight: bold; height: 3em; }
     .stButton>button:hover { background-color: #d4af37; color: white; }
+    .stProgress > div > div > div > div { background-color: #d4af37; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 診斷與讀取函數 (關鍵修正) ---
+# 讀取 Secrets
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    MBTI_URL = st.secrets["MBTI_CSV_URL"]
+    CHAKRA_URL = st.secrets["CHAKRA_CSV_URL"]
+    genai.configure(api_key=API_KEY)
+    ai_model = genai.GenerativeModel('gemini-1.5-pro')
+except Exception as e:
+    st.error(f"⚠️ Secrets 設定錯誤: {e}")
+    st.stop()
+
+# --- 2. 萬能讀取與診斷函數 (關鍵修正) ---
 @st.cache_data
-def load_and_fix_data(url, type_name):
-    try:
-        df = pd.read_csv(url)
-        
-        # 1. 強制清除所有標題的空白
-        df.columns = df.columns.str.strip()
-        
-        # 2. 智慧模糊對應 (只要包含關鍵字就抓取)
-        rename_map = {}
-        for col in df.columns:
-            # 針對 MBTI 與 脈輪的通用欄位
-            if "題目" in col or "Question" in col:
-                rename_map[col] = "Question"
-            elif "模式" in col or "Mode" in col or "Type" in col:
-                rename_map[col] = "Mode"
-            elif "維度" in col or "Dimension" in col:
-                rename_map[col] = "Dimension"
-            elif "選項A" in col or "Option_A" in col or "Option A" in col:
-                rename_map[col] = "Option_A"
-            elif "選項B" in col or "Option_B" in col or "Option B" in col:
-                rename_map[col] = "Option_B"
-            elif "脈輪" in col or "Category" in col or "分類" in col:
-                rename_map[col] = "Chakra_Category"
-                
-        df.rename(columns=rename_map, inplace=True)
-        return df
-    except Exception as e:
-        st.error(f"❌ 無法讀取 {type_name} CSV。請檢查連結是否正確。錯誤訊息: {e}")
+def load_data_safe(url, data_type):
+    # 嘗試多種編碼，解決 Excel 亂碼問題
+    encodings = ['utf-8', 'utf-8-sig', 'big5', 'cp950']
+    df = None
+    
+    for enc in encodings:
+        try:
+            df = pd.read_csv(url, encoding=enc)
+            # 如果成功讀取且沒有亂碼(簡單檢查)，就跳出迴圈
+            if len(df.columns) > 1:
+                break
+        except:
+            continue
+            
+    if df is None:
+        st.error(f"❌ 無法讀取 {data_type} CSV。請檢查連結是否正確。")
         return None
+
+    # 清除欄位空白
+    df.columns = df.columns.str.strip()
+    
+    # 自動欄位對應 (Auto-Mapping)
+    rename_map = {}
+    for col in df.columns:
+        c = col.lower() # 轉小寫比對
+        if "題" in c or "question" in c: rename_map[col] = "Question"
+        elif "模" in c or "mode" in c or "type" in c: rename_map[col] = "Mode"
+        elif "維" in c or "dim" in c: rename_map[col] = "Dimension"
+        elif "a" in c and ("option" in c or "項" in c): rename_map[col] = "Option_A"
+        elif "b" in c and ("option" in c or "項" in c): rename_map[col] = "Option_B"
+        elif "脈" in c or "cat" in c or "分" in c: rename_map[col] = "Chakra_Category"
+            
+    df.rename(columns=rename_map, inplace=True)
+    return df
+
+def check_columns(df, required_cols, name):
+    # 檢查是否缺欄位，缺的話直接顯示在螢幕上
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.error(f"⚠️ {name} 題庫欄位對應失敗！")
+        st.write(f"❌ 缺少的欄位: {missing}")
+        st.write(f"👀 系統讀到的欄位 (請檢查是否亂碼): {list(df.columns)}")
+        st.stop() # 強制暫停，避免後面報錯
 
 # --- 3. 初始化 ---
 if "step" not in st.session_state:
@@ -55,22 +81,11 @@ if "step" not in st.session_state:
     st.session_state.mbti_res = ""
     st.session_state.chakra_res = {}
 
-try:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-    MBTI_URL = st.secrets["MBTI_CSV_URL"]
-    CHAKRA_URL = st.secrets["CHAKRA_CSV_URL"]
-    genai.configure(api_key=API_KEY)
-    ai_model = genai.GenerativeModel('gemini-1.5-pro')
-except:
-    st.error("⚠️ Secrets 設定有誤，請檢查 Streamlit 後台。")
-    st.stop()
-
 # --- 4. 側邊欄 ---
 with st.sidebar:
-    st.title("✨ Fù Realm Debug Mode")
+    st.title("✨ Fù Realm")
     if st.button("🔄 重置系統"):
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.clear(); st.rerun()
 
 # --- 5. 主流程 ---
 
@@ -79,17 +94,11 @@ if st.session_state.step == "welcome":
     st.title("✨ Fù Realm 能量診斷")
     st.info("系統準備就緒，請選擇模式")
     
-    # 預先載入檢查 (除錯關鍵)
-    df_test = load_and_fix_data(MBTI_URL, "MBTI")
+    # 預先載入測試 (若有錯直接顯示)
+    df_test = load_data_safe(MBTI_URL, "MBTI")
     if df_test is not None:
-        required = ["Question", "Option_A", "Option_B", "Dimension"]
-        missing = [c for c in required if c not in df_test.columns]
-        if missing:
-            st.error(f"⚠️ MBTI 題庫讀取異常！")
-            st.write(f"**系統找到的欄位：** {list(df_test.columns)}")
-            st.write(f"**缺少的欄位：** {missing}")
-            st.stop()
-            
+        check_columns(df_test, ["Question", "Option_A", "Option_B", "Dimension"], "MBTI")
+
     c1, c2, c3 = st.columns(3)
     if c1.button("🚀 已知型"): st.session_state.step = "mbti_input"; st.rerun()
     if c2.button("🔍 探索型"): st.session_state.mbti_mode = "Explore"; st.session_state.step = "mbti_quiz"; st.rerun()
@@ -103,7 +112,10 @@ elif st.session_state.step == "mbti_input":
 
 # C. MBTI 測驗
 elif st.session_state.step == "mbti_quiz":
-    df = load_and_fix_data(MBTI_URL, "MBTI")
+    df = load_data_safe(MBTI_URL, "MBTI")
+    # 再次檢查確保萬無一失
+    check_columns(df, ["Question", "Option_A", "Option_B", "Dimension"], "MBTI")
+
     qs = df if st.session_state.mbti_mode == "Deep" else df[df['Mode'].astype(str).str.contains("探索", na=False)]
     
     idx = len(st.session_state.mbti_answers)
@@ -119,22 +131,17 @@ elif st.session_state.step == "mbti_quiz":
             st.session_state.mbti_answers.append({'dim': row['Dimension'], 'score': 'B'}); st.rerun()
     else:
         # 計算結果
-        dims = {'E/I':0, 'S/N':0, 'T/F':0, 'J/P':0}
-        # 簡單計分
         res_df = pd.DataFrame(st.session_state.mbti_answers)
-        
-        # 防止空值錯誤
-        if not res_df.empty and 'dim' in res_df.columns:
-             final_mbti = ""
-             for d in ['E / I', 'S / N', 'T / F', 'J / P']:
+        final_mbti = ""
+        for d in ['E / I', 'S / N', 'T / F', 'J / P']:
+             if 'dim' in res_df.columns:
                  sub = res_df[res_df['dim'] == d]
                  a = (sub['score']=='A').sum()
                  b = (sub['score']=='B').sum()
                  final_mbti += d[0] if a >= b else d[4]
-             st.session_state.mbti_res = final_mbti
-        else:
-             st.session_state.mbti_res = "INFJ" # 預設值防止崩潰
-             
+             else:
+                 final_mbti = "INFJ" # Fallback
+        st.session_state.mbti_res = final_mbti
         st.session_state.step = "chakra_pre"; st.rerun()
 
 # D. 脈輪前導
@@ -146,13 +153,8 @@ elif st.session_state.step == "chakra_pre":
 
 # E. 脈輪測驗
 elif st.session_state.step == "chakra_quiz":
-    df_c = load_and_fix_data(CHAKRA_URL, "Chakra")
-    
-    # 除錯檢查
-    if "Chakra_Category" not in df_c.columns:
-        st.error("❌ 脈輪題庫找不到「分類」欄位。")
-        st.write(f"系統讀到的欄位: {list(df_c.columns)}")
-        st.stop()
+    df_c = load_data_safe(CHAKRA_URL, "Chakra")
+    check_columns(df_c, ["Question", "Chakra_Category"], "Chakra")
 
     qs = df_c[df_c['Mode'].astype(str).str.contains("快速", na=False)] if st.session_state.chakra_mode == "Quick" else df_c
     idx = len(st.session_state.chakra_answers)
