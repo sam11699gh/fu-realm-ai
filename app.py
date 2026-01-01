@@ -104,7 +104,7 @@ elif st.session_state.step == "report":
     - **黃水晶 / 虎眼石**：增強意志力。
     - **黑曜石**：幫助能量落地。
     
-    [👉 前往 Fù Realm 賣場選購您的專屬水晶](https://instagram.com/furealm)
+    [👉 前往 Fù Realm 賣場選購您的專屬水晶](https://www.instagram.com/tinting12o3/)
     """)
     if st.button("重新測試"):
         st.session_state.step = "welcome"
