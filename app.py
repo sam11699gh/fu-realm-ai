@@ -217,16 +217,20 @@ with st.sidebar:
 if st.session_state.step == "welcome":
     st.title("✨ Fù Realm 能量診斷")
     st.info("數據化靈魂解讀：MBTI x 脈輪能量")
+    
     c1, c2, c3 = st.columns(3)
-    if c1.button("🚀 已知型"): st.session_state.step = "mbti_input"; st.rerun()
-    if c2.button("🔍 探索型"): 
-        st.session_state.mbti_mode = "Explore"
-        st.session_state.current_questions = []
-        st.session_state.step = "mbti_quiz"; st.rerun()
-    if c3.button("💎 深層型"): 
-        st.session_state.mbti_mode = "Deep"
-        st.session_state.current_questions = []
-        st.session_state.step = "mbti_quiz"; st.rerun()
+    with c1:
+        if st.button("🚀 已知型"): 
+            st.session_state.step = "mbti_input"; st.rerun()
+        st.markdown("<p style='font-size:0.85em; color:#888; text-align:center;'>直接點選類型</p>", unsafe_allow_html=True)
+    with c2:
+        if st.button("🔍 探索型"): 
+            st.session_state.mbti_mode = "Explore"; st.session_state.current_questions = []; st.session_state.step = "mbti_quiz"; st.rerun()
+        st.markdown("<p style='font-size:0.85em; color:#888; text-align:center;'>快問快答 20 題</p>", unsafe_allow_html=True)
+    with c3:
+        if st.button("💎 深層型"): 
+            st.session_state.mbti_mode = "Deep"; st.session_state.current_questions = []; st.session_state.step = "mbti_quiz"; st.rerun()
+        st.markdown("<p style='font-size:0.85em; color:#888; text-align:center;'>60 題完整檢測</p>", unsafe_allow_html=True)
 
 # 頁面 B: 已知型輸入
 elif st.session_state.step == "mbti_input":
@@ -272,14 +276,14 @@ elif st.session_state.step == "mbti_quiz":
 elif st.session_state.step == "chakra_pre":
     st.success(f"MBTI 分析結果: {st.session_state.mbti_res}")
     c1, c2 = st.columns(2)
-    if c1.button("⚡ 快速檢測"): 
-        st.session_state.chakra_mode = "Quick"
-        st.session_state.current_questions = []
-        st.session_state.step = "chakra_quiz"; st.rerun()
-    if c2.button("🔮 深度檢測"): 
-        st.session_state.chakra_mode = "Deep"
-        st.session_state.current_questions = []
-        st.session_state.step = "chakra_quiz"; st.rerun()
+    with c1:
+        if st.button("⚡ 快速檢測"): 
+            st.session_state.chakra_mode = "Quick"; st.session_state.current_questions = []; st.session_state.step = "chakra_quiz"; st.rerun()
+        st.markdown("<p style='font-size:0.85em; color:#888; text-align:center;'>28 題快閃速測</p>", unsafe_allow_html=True)
+    with c2:
+        if st.button("🔮 深度檢測"): 
+            st.session_state.chakra_mode = "Deep"; st.session_state.current_questions = []; st.session_state.step = "chakra_quiz"; st.rerun()
+        st.markdown("<p style='font-size:0.85em; color:#888; text-align:center;'>56 題精準評估</p>", unsafe_allow_html=True)
 
 # 頁面 E: 脈輪測驗
 elif st.session_state.step == "chakra_quiz":
@@ -336,15 +340,39 @@ elif st.session_state.step == "result":
     final_scores = {k: scores.get(k, 0) for k in ordered_chakras}
     converted_scores = {k: (v - 1) * 25 for k, v in final_scores.items()} 
     
-    # 雷達圖
+    # 雷達圖優化
     df_plot = pd.DataFrame(dict(r=list(converted_scores.values()), theta=list(converted_scores.keys())))
-    fig = px.line_polar(df_plot, r='r', theta='theta', line_close=True, text='r', color_discrete_sequence=['#d4af37'])
-    fig.update_polars(radialaxis=dict(range=[0, 100], showticklabels=False))
-    fig.update_traces(textposition='top center')
-    st.plotly_chart(fig)
+    
+    fig = px.line_polar(df_plot, r='r', theta='theta', line_close=True, color_discrete_sequence=['#d4af37'])
+    
+    # 填充顏色與線條強化
+    fig.update_traces(
+        fill='toself', 
+        fillcolor='rgba(212, 175, 55, 0.3)', 
+        line=dict(width=4),
+        marker=dict(size=10)
+    )
+    
+    # 外圈標籤外移與文字加大
+    fig.update_polars(
+        angularaxis=dict(
+            tickfont=dict(size=16, color="#d4af37", family="Arial Black"), 
+            rotation=90, 
+            direction="clockwise"
+        ),
+        radialaxis=dict(
+            visible=True, 
+            range=[0, 100], 
+            showticklabels=False, 
+            gridcolor="#eeeeee"
+        )
+    )
+    st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
     st.subheader("📊 脈輪能量深度解析")
+    # 新增說明引導
+    st.markdown("<p style='color:#d4af37; font-weight:bold; font-size:1em; margin-bottom:10px;'>🔍 哪裡能量卡住了？點擊下方區塊展開詳細解析與建議 〉</p>", unsafe_allow_html=True)
     
     # --- 核心邏輯：使用 Regex 解析數字 ---
     def get_advice_dynamic(chakra, score):
