@@ -1,4 +1,8 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection  # 必須安裝 streamlit-gsheets
+
+# 建立 Google Sheets 連線
+conn = st.connection("gsheets", type=GSheetsConnection)
 import pandas as pd
 import plotly.express as px
 import random
@@ -99,6 +103,18 @@ st.markdown("""
         font-weight: bold;
         margin-left: 5px;
     }
+
+    /* 猛藥閃爍警告框 */
+    .urgent-box { 
+        background-color: #fff5f5; 
+        border: 2px dashed #d9534f; 
+        padding: 15px; 
+        border-radius: 10px; 
+        text-align: center; 
+        margin-bottom: 20px; 
+        animation: blinker 1.5s linear infinite; 
+    }
+    @keyframes blinker { 50% { opacity: 0.7; } }
     
     /* 主背景色 */
     .main { background-color: #fcfaf2; }
@@ -152,12 +168,38 @@ def draw_questions(df, type_col, categories, count_per_cat):
             selected_indices.extend(selected.index.tolist())
     random.shuffle(selected_indices)
     return df.loc[selected_indices].reset_index(drop=True)
+def log_result_to_sheets(mbti, chakra_res):
+    try:
+        # 抓取最低分的脈輪作為紀錄重點
+        lowest_chakra = min(chakra_res, key=chakra_res.get)
+        new_row = pd.DataFrame([{
+            "Timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "MBTI": mbti,
+            "Chakra": lowest_chakra,
+            "Action": "72H_Campaign"
+        }])
+        # 寫入指定的 QuizResults 分頁
+        existing_data = conn.read(worksheet="QuizResults")
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        conn.update(worksheet="QuizResults", data=updated_df)
+    except:
+        pass # 為了不影響用戶測驗，失敗時靜默跳過
 
 # 側邊欄
 with st.sidebar:
     st.title("✨ Fù Realm")
     if st.button("🔄 重置系統"):
         st.session_state.clear(); st.rerun()
+    st.divider()
+    admin_pwd = st.text_input("💎 管理員密碼", type="password")
+    if admin_pwd == "furealm888":
+        st.subheader("📈 72H 即時數據")
+        raw_data = conn.read(worksheet="QuizResults")
+        if not raw_data.empty:
+            st.write(f"總測驗人數: {len(raw_data)}")
+            fig_pie = px.pie(raw_data, names='Chakra', title="目前脈輪缺口比例", hole=0.3)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
 
 # 頁面 A: 歡迎
 if st.session_state.step == "welcome":
@@ -254,6 +296,19 @@ elif st.session_state.step == "chakra_quiz":
 
 # 頁面 F: 結果報告
 elif st.session_state.step == "result":
+    # 觸發自動存檔 (確保只存一次)
+    if "data_logged" not in st.session_state:
+        log_result_to_sheets(st.session_state.mbti_res, st.session_state.chakra_res)
+        st.session_state.data_logged = True
+
+    # 顯示 72H 限時引流框
+    st.markdown(f"""
+    <div class="urgent-box">
+        <h2 style="color:#d9534f; margin:0;">⚠️ 磁場缺口警告 ⚠️</h2>
+        <p style="color:#333; margin:5px 0;">截圖下方「能量雷達圖」私訊 <b>@百萬妹</b> IG<br>
+        領取專屬 <b>$100 能量校準金</b> (今日名額有限)</p>
+    </div>
+    """, unsafe_allow_html=True)
     df_logic = load_data_smart(LOGIC_URL, "Logic")
     df_prod = load_data_smart(PRODUCT_URL, "Product")
     
