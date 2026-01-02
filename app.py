@@ -427,60 +427,75 @@ elif st.session_state.step == "result":
                 st.write("暫無詳細分析資料")
 
     st.divider()
-    st.subheader("💎 您的命定能量水晶")
-    
-    target_chakra = min(converted_scores, key=converted_scores.get)
-    st.info(f"偵測到您的 **{target_chakra}** 需要支持，專屬推薦：")
-    
-    rec_product = None
-    if df_prod is not None:
-        c_match = df_prod[df_prod['Chakra_Category'].astype(str).str.contains(target_chakra[:2], case=False, na=False)]
-        
-        if not c_match.empty:
-            for _, row in c_match.iterrows():
-                p_targets = str(row['MBTI_Match']).upper()
-                if (user_mbti in p_targets) or (user_group in p_targets) or ("ALL" in p_targets) or ("全部" in p_targets):
-                    rec_product = row
-                    break
-            if rec_product is None and not c_match.empty:
-                rec_product = c_match.iloc[0]
-    
-    if rec_product is not None:
-        p_name = rec_product.get('Product_Name', 'Fù Realm 能量精選')
-        if pd.isna(p_name): p_name = rec_product.get('Product_ID', '精選商品')
-        
-        # 連結處理
-        raw_link = rec_product.get('Store_Link', '')
-        link_str = str(raw_link).strip()
-        
-        if "http" in link_str:
-            final_link = link_str
-        elif "instagram.com" in link_str:
-            final_link = "https://" + link_str
-        else:
-            final_link = "https://www.instagram.com/tinting12o3/"
-        
-        # --- 顯示結果卡片 (使用 HTML 按鈕替代 st.link_button) ---
-        st.markdown(f"""
-        <div class="report-card">
-            <h3>👑 {p_name}</h3>
-            <p><strong>🔮 首選晶石：</strong> {rec_product.get('Gemstones', '設計師特調')}</p>
-            <p><strong>💡 能量解碼：</strong> {rec_product.get('Description', '提升頻率，回歸平衡。')}</p>
-            <hr>
-            <p style="font-size:0.9em; color:#888;">專為 <strong>{target_chakra}</strong> 與 <strong>{user_mbti} ({user_group})</strong> 打造。</p>
-            <a href="{final_link}" target="_blank" class="custom-link-btn">
-                來這瞧瞧 能量精選👀
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    else:
-        st.warning("目前資料庫中暫無完全匹配的組合，建議直接諮詢能量顧問。")
-        st.markdown(f"""
-        <a href="https://ig.me/m/tinting12o3/" target="_blank" class="custom-link-btn">
-            私訊諮詢 💬
-        </a>
-        """, unsafe_allow_html=True)
+    st.subheader("💎 您的能量校準方案")
+    st.markdown("<p style='color:#d4af37; font-weight:bold;'>偵測到您的能量場存在連鎖影響，建議優先調整以下三個核心脈輪：</p>", unsafe_allow_html=True)
 
+    # 1. 計算「百分比偏移」失衡權重 (解決 10 分與 90 分對等嚴重程度)
+    imbalance_scores = {}
+    for k, v in converted_scores.items():
+        if v < 61:
+            # 不足區：(理想下限 61 - 實際分數) / 不足區總長度 61
+            imbalance_scores[k] = (61 - v) / 61
+        elif v > 85:
+            # 過度區：(實際分數 - 理想上限 85) / 過度區總長度 15
+            # 加入 2.5 倍敏感係數，平衡高低分區的區間差異
+            imbalance_scores[k] = ((v - 85) / 15) * 2.5
+        else:
+            imbalance_scores[k] = 0
+
+    # 2. 取得失衡度最高的前 3 名
+    top_3_targets = sorted(imbalance_scores, key=imbalance_scores.get, reverse=True)[:3]
+
+    # 3. 建立三欄式推薦版面
+    rec_cols = st.columns(3)
+
+    for i, target in enumerate(top_3_targets):
+        with rec_cols[i]:
+            rec_product = None
+            if df_prod is not None:
+                # 篩選對應脈輪 (取前兩個字匹配)
+                c_match = df_prod[df_prod['Chakra_Category'].astype(str).str.contains(target[:2], na=False)]
+                
+                # 優先匹配 MBTI 或 氣質
+                for _, row in c_match.iterrows():
+                    p_targets = str(row['MBTI_Match']).upper()
+                    if (user_mbti in p_targets) or (user_group in p_targets) or ("ALL" in p_targets):
+                        rec_product = row
+                        break
+                # 若無精準匹配，取該脈輪第一件備選
+                if rec_product is None and not c_match.empty:
+                    rec_product = c_match.iloc[0]
+
+            # 顯示精緻推薦卡片
+            if rec_product is not None:
+                p_name = rec_product.get('Product_Name', 'Fù Realm 特調')
+                if pd.isna(p_name): p_name = rec_product.get('Product_ID', '能量精選')
+                
+                st.markdown(f"""
+                <div style="border: 1px solid #d4af37; padding: 12px; border-radius: 10px; background-color: white; height: 320px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <div>
+                        <div style="background-color: #d4af37; color: white; padding: 2px 8px; border-radius: 5px; font-size: 0.8em; display: inline-block; margin-bottom: 8px;">
+                            優先校準 {i+1}
+                        </div>
+                        <h4 style="margin: 0; color: #333; font-size: 1.1em;">{target}</h4>
+                        <p style="color: #d4af37; font-size: 0.85em; font-weight: bold; margin: 5px 0;">{p_name}</p>
+                        <p style="font-size: 0.8em; color: #666; line-height: 1.4;">{rec_product.get('Gemstones', '天然晶石組合')}</p>
+                    </div>
+                    <div style="font-size: 0.75em; color: #999; border-top: 1px solid #eee; padding-top: 8px;">
+                        針對此能量偏離進行深度校準
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.write(f"🔍 {target} 建議私訊預約鑑定")
+
+    # 統一導流按鈕
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <a href="https://www.instagram.com/tinting12o3/" target="_blank" class="custom-link-btn">
+            ✨ 私訊百萬妹，領取三合一能量校準金 👀
+        </a>
+    """, unsafe_allow_html=True)
+    
     if st.button("🔄 重新測驗"):
         st.session_state.clear(); st.rerun()
