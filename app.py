@@ -340,30 +340,42 @@ elif st.session_state.step == "result":
     final_scores = {k: scores.get(k, 0) for k in ordered_chakras}
     converted_scores = {k: (v - 1) * 25 for k, v in final_scores.items()} 
     
-    # 雷達圖優化
-    df_plot = pd.DataFrame(dict(r=list(converted_scores.values()), theta=list(converted_scores.keys())))
+    # --- 雷達圖優化：數值與名稱合併顯示 ---
     
-    fig = px.line_polar(df_plot, r='r', theta='theta', line_close=True, color_discrete_sequence=['#d4af37'])
+    # 1. 準備包含數值的標籤 (例如：頂輪 81)
+    # 我們把標籤與數值結合，讓它顯示在最外圈
+    label_with_scores = [f"{k} {v:.0f}" for k, v in converted_scores.items()]
     
-    # 填充顏色與線條強化
+    df_plot = pd.DataFrame(dict(
+        r=list(converted_scores.values()), 
+        theta=label_with_scores  # 使用結合後的標籤
+    ))
+    
+    fig = px.line_polar(df_plot, r='r', theta='theta', line_close=True, 
+                        color_discrete_sequence=['#d4af37'])
+    
+    # 2. 填充顏色與線條強化 (移除點上的浮動數字，因為已經在標籤裡了)
     fig.update_traces(
         fill='toself', 
         fillcolor='rgba(212, 175, 55, 0.3)', 
         line=dict(width=4),
-        marker=dict(size=10)
+        marker=dict(size=8)
     )
     
-    # 外圈標籤外移與文字加大
+    # 3. 外圈標籤優化
     fig.update_polars(
         angularaxis=dict(
-            tickfont=dict(size=16, color="#d4af37", family="Arial Black"), 
+            tickfont=dict(size=15, color="#d4af37", family="Arial Black"), 
             rotation=90, 
-            direction="clockwise"
+            direction="clockwise",
+            # 增加一些間距，避免文字太貼近圖表
+            ticks="outside",
+            ticklen=10
         ),
         radialaxis=dict(
             visible=True, 
             range=[0, 100], 
-            showticklabels=False, 
+            showticklabels=False, # 隱藏中心軸數字，保持畫面簡潔
             gridcolor="#eeeeee"
         )
     )
