@@ -378,8 +378,12 @@ elif st.session_state.step == "result":
             gridcolor="#eeeeee"
         )
     )
-    # 增加截圖說明
-    st.markdown("<p style='text-align:right; color:#999; font-size:0.8em; margin-bottom:-20px;'>📸 按我保存圖表：點擊圖表右上角相機圖示，或直接手機截圖保存</p>", unsafe_allow_html=True)
+    # 優化後的截圖說明：字體縮小、增加換行適應手機
+    st.markdown("""
+        <p style='text-align:right; color:#999; font-size:0.7em; margin-bottom:-15px; line-height:1.2;'>
+            📸 點擊圖表右上相機圖標下載<br>或直接手機截圖報告
+        </p>
+    """, unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
