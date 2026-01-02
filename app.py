@@ -188,17 +188,29 @@ def log_result_to_sheets(mbti, chakra_res):
 # 側邊欄
 with st.sidebar:
     st.title("✨ Fù Realm")
+    
+    # 保持重置按鈕
     if st.button("🔄 重置系統"):
-        st.session_state.clear(); st.rerun()
-    st.divider()
-    admin_pwd = st.text_input("💎 管理員密碼", type="password")
-    if admin_pwd == "furealm888":
-        st.subheader("📈 72H 即時數據")
-        raw_data = conn.read(worksheet="QuizResults")
-        if not raw_data.empty:
-            st.write(f"總測驗人數: {len(raw_data)}")
-            fig_pie = px.pie(raw_data, names='Chakra', title="目前脈輪缺口比例", hole=0.3)
-            st.plotly_chart(fig_pie, use_container_width=True)
+        st.session_state.clear()
+        st.rerun()
+
+    # --- 方案 B：真正隱藏 (URL 參數觸發) ---
+    # 只有當網址最後面加上 ?mode=admin 時，才會出現管理員登入框
+    if st.query_params.get("mode") == "admin":
+        st.divider()
+        admin_pwd = st.text_input("💎 管理員密碼", type="password")
+        if admin_pwd == "furealm888":
+            st.subheader("📈 72H 即時數據")
+            try:
+                raw_data = conn.read(worksheet="QuizResults")
+                if not raw_data.empty:
+                    st.write(f"總測驗人數: {len(raw_data)}")
+                    fig_pie = px.pie(raw_data, names='Chakra', title="目前脈輪缺口比例", hole=0.3)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                else:
+                    st.write("尚無數據")
+            except Exception as e:
+                st.write("數據讀取中，請稍候...")
 
 
 # 頁面 A: 歡迎
