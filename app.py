@@ -317,12 +317,11 @@ elif st.session_state.step == "result":
         log_result_to_sheets(st.session_state.mbti_res, st.session_state.chakra_res)
         st.session_state.data_logged = True
 
-    # 顯示 72H 限時引流框
+   # 顯示 72H 共情引流框 (修改主副標)
     st.markdown(f"""
     <div class="urgent-box">
-        <h2 style="color:#d9534f; margin:0;">⚠️ 磁場缺口警告 ⚠️</h2>
-        <p style="color:#333; margin:5px 0;">截圖下方「能量雷達圖」私訊 <b>@百萬妹</b> IG<br>
-        領取專屬 <b>$100 能量校準金</b> (今日名額有限)</p>
+        <h2 style="color:#d4af37; margin:0; font-size:1.3em;">最近累嗎？但原因不是你不夠努力。</h2>
+        <p style="color:#555; margin:8px 0; font-size:1em;">讓我們一起，找出真正卡住的地方。</p>
     </div>
     """, unsafe_allow_html=True)
     df_logic = load_data_smart(LOGIC_URL, "Logic")
@@ -379,6 +378,8 @@ elif st.session_state.step == "result":
             gridcolor="#eeeeee"
         )
     )
+    # 增加截圖說明
+    st.markdown("<p style='text-align:right; color:#999; font-size:0.8em; margin-bottom:-20px;'>📸 按我保存圖表：點擊圖表右上角相機圖示，或直接手機截圖保存</p>", unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
@@ -489,11 +490,11 @@ elif st.session_state.step == "result":
             else:
                 st.write(f"🔍 {target} 建議私訊預約鑑定")
 
-    # 統一導流按鈕
+    # 統一導流按鈕 (修改按鈕文字)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(f"""
         <a href="https://www.instagram.com/tinting12o3/" target="_blank" class="custom-link-btn">
-            ✨ 私訊百萬妹，領取三合一能量校準金 👀
+            看看別人是怎麼調整這狀態的 👀
         </a>
     """, unsafe_allow_html=True)
     
